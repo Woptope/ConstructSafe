@@ -1,4 +1,4 @@
-﻿using Microsoft.Xrm.Sdk.Query;
+using Microsoft.Xrm.Sdk.Query;
 using Microsoft.Xrm.Sdk;
 using System;
 using System.Collections.Generic;
@@ -42,17 +42,23 @@ namespace DevSolutions.Plugins
                 }
             }
         }
-
         private void LockTransaction(IOrganizationService service, ITracingService tracingService)
         {
-            tracingService.Trace("Locking transaction");
-
             var qExpression = new QueryExpression("ds_nonconformitymanagementsetting");
             qExpression.ColumnSet = new ColumnSet("ds_name");
             qExpression.Criteria.AddCondition("ds_name", ConditionOperator.Equal, "Locker For Autonumbering");
 
             var results = service.RetrieveMultiple(qExpression);
-            tracingService.Trace("Count of ds_nonconformitymanagementsetting records - {0}", results.Entities.Count);
+
+            if (results.Entities.Count == 0)
+            {
+                Entity newLockRecord = new Entity("ds_nonconformitymanagementsetting");
+                newLockRecord["ds_name"] = "Locker For Autonumbering";
+                service.Create(newLockRecord);
+
+                // Retrieve the newly created lock record
+                results = service.RetrieveMultiple(qExpression);
+            }
 
             var counter = results.Entities.First();
             var blocker = new Entity("ds_nonconformitymanagementsetting") { Id = counter.Id };
@@ -60,12 +66,11 @@ namespace DevSolutions.Plugins
 
             service.Update(blocker); // Lock all transactions
 
-            tracingService.Trace("Transaction locked");
         }
+
 
         private int GetNextAutoNumber(IOrganizationService service, ITracingService tracingService)
         {
-            tracingService.Trace("Retrieving next auto number");
 
             var query = new QueryExpression("ds_nonconformity")
             {
@@ -74,7 +79,6 @@ namespace DevSolutions.Plugins
 
             query.Criteria.AddCondition("ds_nonconformitynumber", ConditionOperator.NotNull);
             var retrievedRecords = service.RetrieveMultiple(query).Entities;
-            tracingService.Trace("Number of records retrieved: {0}", retrievedRecords.Count);
 
             List<int> numbers = new List<int>();
             foreach (Entity rec in retrievedRecords)
